@@ -64,7 +64,7 @@ jobs:
   test:
     name: API Test Automation Framework
     environment: ${{ github.event.inputs.test_environment || 'Staging2' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-20.04
     env:
       SLACK_BOT_USER_OAUTH_TOKEN: ${{ secrets.SLACK_BOT_USER_OAUTH_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
