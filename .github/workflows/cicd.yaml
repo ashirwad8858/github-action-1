@@ -1,0 +1,77 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    branches:
+      - dev
+      - qa
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # Map branch to environment
+    environment: ${{ 
+      github.ref == 'refs/heads/main' && 'prod' || 
+      github.ref == 'refs/heads/qa' && 'qa' || 
+      'dev' 
+    }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Debug branch
+        run: echo "Branch is $GITHUB_REF"
+
+      - name: Setup Node.js 25.0.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25.0.0
+          cache: npm
+
+      # Set environment variables BEFORE build
+      - name: Set environment variables
+        run: |
+          echo "REACT_APP_API_URL=${{ vars.API_URL }}" >> $GITHUB_ENV
+          echo "REACT_APP_FEATURE_FLAG=${{ vars.FEATURE_FLAG }}" >> $GITHUB_ENV
+          echo "REACT_APP_SECRET_KEY=${{ secrets.FRONTEND_SECRET }}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/ s3://${{ vars.S3_BUCKET }}/ --delete
+          echo "S3 deployment completed"
+
+      - name: CloudFront cache invalidation
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CLOUDFRONT_DIST_ID }} \
+            --paths "/*" \
+            --query 'Invalidation.Id' --output text)
+          echo "Created CloudFront invalidation: $INVALIDATION_ID"
+
+      # Manual approval for production
+      - name: Wait for production approval
+        if: github.ref == 'refs/heads/main'
+        uses: peter-evans/wait-for-approval@v2
+        with:
+          approvers: 'team-leads'
+          timeout: 60m
+          message: 'Please approve deployment to PROD'
