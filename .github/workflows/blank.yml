@@ -48,3 +48,11 @@ jobs:
       - name: Deploy to S3
         run: |
           aws s3 sync dist/ s3://${{ vars.S3_BUCKET }}/ --delete
+
+      - name: Wait for production approval
+        if: github.ref == 'refs/heads/main'
+        uses: peter-evans/wait-for-approval@v2
+        with:
+          approvers: 'team-leads'
+          timeout: 60m
+          message: 'Please approve deployment to PROD'
