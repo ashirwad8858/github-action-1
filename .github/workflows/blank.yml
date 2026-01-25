@@ -1,168 +1,50 @@
-# name: First workflow
-# on: workflow_dispatch
-# jobs:
-#   first-job:
-#     runs-on: ubuntu-20.04
-#     steps:
-#       - name: Print Hello
-#         run: echo "Hello world"
-#       - name: Print bye
-#         run: echo "Good bye"
-
-name: GraphQL API Test Automation Framework
+name: Frontend CI/CD
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      test_environment:
-        description: 'Select Test Environment'
-        required: true
-        type: choice
-        options:
-          - QA
-          - Staging
-          - Staging2
-          - Live
-        default: 'Staging2'
-      test_suite:
-        description: 'Select Test Suite'
-        required: true
-        type: choice
-        options:
-          - ChartEasy-Mutations
-          - ChartEasy-Queries
-          - ChartEasy-Suites
-          - ChartEasy-All
-          - ChatEasy-Mutations
-          - ChatEasy-Query
-          - ChatEasy-All
-          - TMAdmin-Mutations
-          - TMAdmin-Queries
-          - TMAdmin-All
-          - PartnerPortal-Mutations
-          - PartnerPortal-Queries
-          - PartnerPortal-All
-          - ComplianceTests
-          - CPICodeStatusTests
-          - COM-57-Tests
-          - All-Tests
-        default: 'All-Tests'
-      receiver_email:
-        description: 'Email Recipients for Test Report (comma separated)'
-        required: true
-        type: string
-        default: 'gsharma@qasource.com'
-env:
-  TEST_FRAMEWORK_NAME: 'Zion-GraphQL-Automation-Framework'
-  TEST_ENVIRONMENT: ${{ github.event.inputs.test_environment || 'Staging2' }}
-  TEST_SUITE: ${{ github.event.inputs.test_suite || 'All-Tests' }}
+    branches:
+      - dev
+      - qa
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  test:
-    name: API Test Automation Framework
-    environment: ${{ github.event.inputs.test_environment || 'Staging2' }}
-    runs-on: ubuntu-22.04
-    env:
-      SLACK_BOT_USER_OAUTH_TOKEN: ${{ secrets.SLACK_BOT_USER_OAUTH_TOKEN }}
-      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-      SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-      SMTP_USER: ${{ secrets.SMTP_USER }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      SENDER_NAME: ${{ secrets.SENDER_NAME }}
-      SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-      RECEIVER_EMAIL: ${{ github.event.inputs.receiver_email || secrets.RECEIVER_EMAIL }}
-      CHARTEASY_GRAPHQL_ENDPOINT: ${{ secrets.CHARTEASY_GRAPHQL_ENDPOINT }}
-      CHARTEASY_USERNAME: ${{ secrets.CHARTEASY_USERNAME }}
-      CHARTEASY_PASSWORD: ${{ secrets.CHARTEASY_PASSWORD }}
-      CHATEASY_GRAPHQL_ENDPOINT: ${{ secrets.CHATEASY_GRAPHQL_ENDPOINT }}
-      CHATEASY_USERNAME: ${{ secrets.CHATEASY_USERNAME }}
-      CHATEASY_PASSWORD: ${{ secrets.CHATEASY_PASSWORD }}
-      PARTNER_PORTAL_GRAPHQL_ENDPOINT: ${{ secrets.PARTNER_PORTAL_GRAPHQL_ENDPOINT }}
-      PARTNER_PORTAL_USERNAME: ${{ secrets.PARTNER_PORTAL_USERNAME }}
-      PARTNER_PORTAL_PASSWORD: ${{ secrets.PARTNER_PORTAL_PASSWORD }}
-      TM_ADMIN_GRAPHQL_ENDPOINT: ${{ secrets.TM_ADMIN_GRAPHQL_ENDPOINT }}
-      TM_ADMIN_USERNAME: ${{ secrets.TM_ADMIN_USERNAME }}
-      TM_ADMIN_PASSWORD: ${{ secrets.TM_ADMIN_PASSWORD }}
-      TM_ADMIN_CLIENT_KEY: ${{ secrets.TM_ADMIN_CLIENT_KEY }}
-      TM_ADMIN_CLIENT_SECRET: ${{ secrets.TM_ADMIN_CLIENT_SECRET }}
+  deploy:
+    runs-on: ubuntu-latest
+
+    # Branch → Environment mapping
+    environment: |
+      ${{
+        github.ref == 'refs/heads/main' && 'prod' ||
+        github.ref == 'refs/heads/qa' && 'qa' ||
+        'dev'
+      }}
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Node.js 25.0.0
+        uses: actions/setup-node@v4
         with:
-          node-version: '22.14.0'
-          cache: 'npm'                       
+          node-version: 25.0.0
+          cache: npm
 
-      - name: Run Playwright Tests
-        run: |
-          echo "Installing dependencies"
-          npm ci
+      - name: Install dependencies
+        run: npm ci
 
-          echo "Running test suite: ${TEST_SUITE} on ${TEST_ENVIRONMENT} environment"
-          npx playwright test --project="${TEST_SUITE}" --config=playwright.config.ci.js
+      - name: Build frontend
+        run: npm run build
 
-      - name: Generate Allure Report and Send Notifications
-        if: always()
-        run: |
-          echo "Generating Allure report and sending notifications"
-          mkdir -p allure-report
-
-          echo "Check if allure-results directory exists and is not empty"
-          if [ ! -d "./allure-results" ] || [ -z "$(ls -A ./allure-results)" ]; then
-            echo "No allure-results found to generate the report. Skipping report and notifications."
-            exit 0
-          fi
-
-          if npx allure generate ./allure-results -o ./allure-report; then
-            echo "Allure report generated successfully"
-
-            echo "Sending Slack notifications"
-            node scripts/slackNotifier.js \
-              --slack-bot-user-oauth-token "${SLACK_BOT_USER_OAUTH_TOKEN}" \
-              --slack-channel-id "${SLACK_CHANNEL_ID}" \
-              --executed-by "GitHub Actions Pipeline" \
-              --test-framework-name "${TEST_FRAMEWORK_NAME}" \
-              --test-environment "${TEST_ENVIRONMENT}" \
-              --test-suite "${TEST_SUITE}" \
-              --test-run-id "[${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})" \
-              --test-report-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-              --test-results "./allure-report/widgets/statistic.json"
-            echo "Slack notification sent successfully for test run ${GITHUB_RUN_NUMBER}"
-
-            echo "Sending Email notifications to ${RECEIVER_EMAIL}"
-            node scripts/emailNotifier.js \
-              --smtp-server "${SMTP_SERVER}" \
-              --smtp-user "${SMTP_USER}" \
-              --smtp-password "${SMTP_PASSWORD}" \
-              --smtp-port "${SMTP_PORT}" \
-              --sender-name "${SENDER_NAME}" \
-              --sender-email "${SENDER_EMAIL}" \
-              --receiver-email "${RECEIVER_EMAIL}" \
-              --executed-by "GitHub Actions Pipeline" \
-              --test-framework-name "${TEST_FRAMEWORK_NAME}" \
-              --test-environment "${TEST_ENVIRONMENT}" \
-              --test-suite "${TEST_SUITE}" \
-              --test-run-id "[${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})" \
-              --test-report-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-              --test-results "./allure-report/widgets/statistic.json" \
-              --test-results-attachment "./allure-report.zip"
-            echo "Email notification sent successfully for test run ${GITHUB_RUN_NUMBER}"
-          else
-            echo "Failed to generate Allure report"
-            exit 1
-          fi
-        continue-on-error: true
-
-      - name: Upload Allure Report
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          name: allure-report
-          path: allure-report/**/*
-          retention-days: 1
-          if-no-files-found: warn
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/ s3://${{ vars.S3_BUCKET }}/ --delete
