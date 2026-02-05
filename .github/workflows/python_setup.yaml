@@ -1,23 +1,25 @@
-
 name: Python CI
+
 on:
   push:
-    branches: main
+    branches: [ main ]
+  pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - name: checkout code
-        uses: actions/checkoout@4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: action/setup-python@4
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.8'
+          python-version: '3.9'
 
-      - name: Install dependency
-        run |
+      - name: Install dependencies
+        run: |
           pip install pytest flake8
 
       - name: Verify Python version
@@ -30,4 +32,4 @@ jobs:
 
       - name: Verify Pytest
         run: |
-          pytest --version 
+          pytest --version
