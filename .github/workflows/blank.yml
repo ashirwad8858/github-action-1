@@ -56,3 +56,20 @@ jobs:
           approvers: 'team-leads'
           timeout: 60m
           message: 'Please approve deployment to PROD'
+
+  deploy-ment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 25.0.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25.0.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+      
+    
